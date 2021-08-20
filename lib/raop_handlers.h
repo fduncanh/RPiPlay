@@ -60,16 +60,16 @@ raop_handler_info(raop_conn_t *conn,
     plist_t audio_formats_node = plist_new_array();
     plist_t audio_format_0_node = plist_new_dict();
     plist_t audio_format_0_type_node = plist_new_uint(100);
-    plist_t audio_format_0_audio_input_formats_node = plist_new_uint(67108860);
-    plist_t audio_format_0_audio_output_formats_node = plist_new_uint(67108860);
+    plist_t audio_format_0_audio_input_formats_node = plist_new_uint(0x3fffffc);
+    plist_t audio_format_0_audio_output_formats_node = plist_new_uint(0x3fffffc);
     plist_dict_set_item(audio_format_0_node, "type", audio_format_0_type_node);
     plist_dict_set_item(audio_format_0_node, "audioInputFormats", audio_format_0_audio_input_formats_node);
     plist_dict_set_item(audio_format_0_node, "audioOutputFormats", audio_format_0_audio_output_formats_node);
     plist_array_append_item(audio_formats_node, audio_format_0_node);
     plist_t audio_format_1_node = plist_new_dict();
     plist_t audio_format_1_type_node = plist_new_uint(101);
-    plist_t audio_format_1_audio_input_formats_node = plist_new_uint(67108860);
-    plist_t audio_format_1_audio_output_formats_node = plist_new_uint(67108860);
+    plist_t audio_format_1_audio_input_formats_node = plist_new_uint(0x3fffffc);
+    plist_t audio_format_1_audio_output_formats_node = plist_new_uint(0x3fffffc);
     plist_dict_set_item(audio_format_1_node, "type", audio_format_1_type_node);
     plist_dict_set_item(audio_format_1_node, "audioInputFormats", audio_format_1_audio_input_formats_node);
     plist_dict_set_item(audio_format_1_node, "audioOutputFormats", audio_format_1_audio_output_formats_node);
@@ -134,13 +134,14 @@ raop_handler_info(raop_conn_t *conn,
     plist_t displays_0_uuid_node = plist_new_string("e0ff8a27-6738-3d56-8a16-cc53aacee925");
     plist_t displays_0_width_physical_node = plist_new_uint(0);
     plist_t displays_0_height_physical_node = plist_new_uint(0);
-    plist_t displays_0_width_node = plist_new_uint(1920);
-    plist_t displays_0_height_node = plist_new_uint(1080);
-    plist_t displays_0_width_pixels_node = plist_new_uint(1920);
-    plist_t displays_0_height_pixels_node = plist_new_uint(1080);
+    plist_t displays_0_width_node = plist_new_uint(conn->raop->display_width);
+    plist_t displays_0_height_node = plist_new_uint(conn->raop->display_height);
+    plist_t displays_0_width_pixels_node = plist_new_uint(conn->raop->display_width);
+    plist_t displays_0_height_pixels_node = plist_new_uint(conn->raop->display_height);
     plist_t displays_0_rotation_node = plist_new_bool(0);
-    plist_t displays_0_refresh_rate_node = plist_new_real(1.0 / 60.0);
-    plist_t displays_0_overscanned_node = plist_new_bool(1);
+    plist_t displays_0_refresh_rate_node = plist_new_uint(conn->raop->display_refresh_rate);
+    plist_t displays_0_max_fps_node = plist_new_uint(conn->raop->display_max_fps);
+    plist_t displays_0_overscanned_node = plist_new_bool(conn->raop->display_overscanned);
     plist_t displays_0_features = plist_new_uint(14);
 
     plist_dict_set_item(displays_0_node, "uuid", displays_0_uuid_node);
@@ -152,6 +153,7 @@ raop_handler_info(raop_conn_t *conn,
     plist_dict_set_item(displays_0_node, "heightPixels", displays_0_height_pixels_node);
     plist_dict_set_item(displays_0_node, "rotation", displays_0_rotation_node);
     plist_dict_set_item(displays_0_node, "refreshRate", displays_0_refresh_rate_node);
+    plist_dict_set_item(displays_0_node, "maxFPS", displays_0_max_fps_node);
     plist_dict_set_item(displays_0_node, "overscanned", displays_0_overscanned_node);
     plist_dict_set_item(displays_0_node, "features", displays_0_features);
     plist_array_append_item(displays_node, displays_0_node);
@@ -372,12 +374,14 @@ raop_handler_setup(raop_conn_t *conn,
         plist_get_uint_val(time_note, &timing_rport);
         logger_log(conn->raop->logger, LOGGER_DEBUG, "timing_rport = %llu", timing_rport);
 
-        unsigned short timing_lport;
+        unsigned short timing_lport = conn->raop->timing_lport;
         conn->raop_ntp = raop_ntp_init(conn->raop->logger, conn->remote, conn->remotelen, timing_rport);
         raop_ntp_start(conn->raop_ntp, &timing_lport);
 
-        conn->raop_rtp = raop_rtp_init(conn->raop->logger, &conn->raop->callbacks, conn->raop_ntp, conn->remote, conn->remotelen, aeskey, aesiv, ecdh_secret);
-        conn->raop_rtp_mirror = raop_rtp_mirror_init(conn->raop->logger, &conn->raop->callbacks, conn->raop_ntp, conn->remote, conn->remotelen, aeskey, ecdh_secret);
+        conn->raop_rtp = raop_rtp_init(conn->raop->logger, &conn->raop->callbacks, conn->raop_ntp, conn->remote,conn->remotelen,
+                                       aeskey, aesiv, ecdh_secret, conn->raop->control_lport, conn->raop->data_lport);
+        conn->raop_rtp_mirror = raop_rtp_mirror_init(conn->raop->logger, &conn->raop->callbacks, conn->raop_ntp, conn->remote, conn->remotelen,
+                                                     aeskey, ecdh_secret, conn->raop->mirror_data_lport);
 
         plist_t res_event_port_node = plist_new_uint(conn->raop->port);
         plist_t res_timing_port_node = plist_new_uint(timing_lport);

@@ -102,7 +102,8 @@ raop_rtp_parse_remote(raop_rtp_mirror_t *raop_rtp_mirror, const unsigned char *r
 #define NO_FLUSH (-42)
 raop_rtp_mirror_t *raop_rtp_mirror_init(logger_t *logger, raop_callbacks_t *callbacks, raop_ntp_t *ntp,
                                         const unsigned char *remote, int remotelen,
-                                        const unsigned char *aeskey, const unsigned char *ecdh_secret)
+                                        const unsigned char *aeskey, const unsigned char *ecdh_secret,
+                                        unsigned short mirror_data_lport)
 {
     raop_rtp_mirror_t *raop_rtp_mirror;
 
@@ -113,6 +114,7 @@ raop_rtp_mirror_t *raop_rtp_mirror_init(logger_t *logger, raop_callbacks_t *call
     if (!raop_rtp_mirror) {
         return NULL;
     }
+    raop_rtp_mirror->mirror_data_lport = mirror_data_lport;
     raop_rtp_mirror->logger = logger;
     raop_rtp_mirror->ntp = ntp;
 
@@ -430,6 +432,8 @@ raop_rtp_mirror_thread(void *arg)
     return 0;
 }
 
+static int raop_rtp_init_mirror_sockets(raop_rtp_mirror_t *raop_rtp_mirror, int use_ipv6);
+
 void
 raop_rtp_start_mirror(raop_rtp_mirror_t *raop_rtp_mirror, int use_udp, unsigned short *mirror_data_lport)
 {
@@ -507,6 +511,7 @@ raop_rtp_init_mirror_sockets(raop_rtp_mirror_t *raop_rtp_mirror, int use_ipv6)
 
     assert(raop_rtp_mirror);
 
+    dport = raop_rtp_mirror->mirror_data_lport;
     dsock = netutils_init_socket(&dport, use_ipv6, 0);
     if (dsock == -1) {
         goto sockets_cleanup;
@@ -522,6 +527,7 @@ raop_rtp_init_mirror_sockets(raop_rtp_mirror_t *raop_rtp_mirror, int use_ipv6)
 
     /* Set port values */
     raop_rtp_mirror->mirror_data_lport = dport;
+    logger_log(raop_rtp_mirror->logger, LOGGER_DEBUG, "raop_rtp_mirror local data port socket %d port TCP %d", dsock, dport);
     return 0;
 
     sockets_cleanup:

@@ -44,7 +44,19 @@ struct raop_s {
 
     dnssd_t *dnssd;
 
+    /* local network ports */  
     unsigned short port;
+    unsigned short timing_lport;
+    unsigned short control_lport;
+    unsigned short data_lport;
+    unsigned short mirror_data_lport;  
+
+    /* plist display items: width, height, refreshRate, maxFPS, overscanned */
+    uint16_t display_width;
+    uint16_t display_height;
+    uint8_t display_refresh_rate;
+    uint8_t display_max_fps;
+    uint8_t display_overscanned;
 };
 
 struct raop_conn_s {
@@ -303,6 +315,21 @@ raop_init(int max_clients, raop_callbacks_t *callbacks) {
     memcpy(&raop->callbacks, callbacks, sizeof(raop_callbacks_t));
     raop->pairing = pairing;
     raop->httpd = httpd;
+
+    /* initialize network port list */ 
+    raop->port = 0;    
+    raop->timing_lport = 0;
+    raop->control_lport = 0;
+    raop->data_lport = 0;
+    raop->mirror_data_lport = 0;
+
+    /* initialize display plist parameters */
+    raop->display_width = 1920;
+    raop->display_height = 1080;
+    raop->display_refresh_rate = 60;
+    raop->display_max_fps = 30;
+    raop->display_overscanned = 0;
+    
     return raop;
 }
 
@@ -334,10 +361,36 @@ raop_set_log_level(raop_t *raop, int level) {
     logger_set_level(raop->logger, level);
 }
 
+void raop_set_display(raop_t *raop, unsigned short width, unsigned short height,
+                      unsigned short refresh_rate, unsigned short max_fps, unsigned short overscanned){
+    assert(raop);
+
+    if (width) raop->display_width = (uint16_t) width;
+    if (height) raop->display_height = (uint16_t) height;
+    if (refresh_rate && refresh_rate < 256) raop->display_refresh_rate = (uint8_t) refresh_rate;
+    if (max_fps && max_fps < 256) raop->display_max_fps = (uint8_t) max_fps;
+    if (overscanned) raop->display_overscanned = 1;
+}
+
 void
 raop_set_port(raop_t *raop, unsigned short port) {
     assert(raop);
     raop->port = port;
+}
+
+void
+raop_set_udp_ports(raop_t *raop, unsigned short udp[3]) {
+    assert(raop);
+    raop->timing_lport = udp[0]; 
+    raop->control_lport = udp[1];
+    raop->data_lport = udp[2];
+}
+
+void
+raop_set_tcp_ports(raop_t *raop, unsigned short tcp[2]) {
+    assert(raop);
+    raop->mirror_data_lport = tcp[0];
+    raop->port = tcp[1];
 }
 
 unsigned short
