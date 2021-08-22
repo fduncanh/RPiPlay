@@ -40,11 +40,14 @@
 #define DEFAULT_AUDIO_DEVICE AUDIO_DEVICE_HDMI
 #define DEFAULT_LOW_LATENCY false
 #define DEFAULT_DEBUG_LOG false
+#define LOWEST_ALLOWED_PORT 1024
+#define HIGHEST_PORT 65535
 #define DEFAULT_ROTATE 0
 #define DEFAULT_FLIP FLIP_NONE
 #define DEFAULT_HW_ADDRESS { (char) 0x48, (char) 0x5d, (char) 0x60, (char) 0x7c, (char) 0xee, (char) 0x22 }
 
-int start_server(std::vector<char> hw_addr, std::string name, bool debug_log,
+int start_server(std::vector<char> hw_addr, std::string name, unsigned short display[5],
+                 unsigned short tcp[3], unsigned short udp[3],  bool debug_log,
                  video_renderer_config_t const *video_config, audio_renderer_config_t const *audio_config);
 
 int stop_server();
@@ -159,6 +162,12 @@ void print_info(char *name) {
     printf("Usage: %s [-n name] [-b (on|auto|off)] [-r (90|180|270)] [-l] [-a (hdmi|analog|off)] [-vr renderer] [-ar renderer]\n", name);
     printf("Options:\n");
     printf("-n name               Specify the network name of the AirPlay server\n");
+    printf("-s wxh[@r]            Set mirror resolution [refresh_rate] default 1920x1080[@60]\n");
+    printf("-o                    Set mirror \"overscanned\" mode on\n"); 
+    printf("-fps n                Set maximum allowed streaming framerate, default 30\n");
+    printf("-p                    Use legacy ports UDP 6000:6001:7011 TCP 7000:7001:7100\n");    
+    printf("-p (  | tcp | udp) n  Use (TCP and UDP | TCP | UDP) ports n,n+1,n+2. range 1024-65535\n");
+    printf("   \"n\" =  n1,n2,n3        specifies ports individually; \"n1,n2\" gives n3 = n2+1\n");
     printf("-b (on|auto|off)      Show black background always, only during active connection, or never\n");
     printf("-r (90|180|270)       Specify image rotation in multiples of 90 degrees\n");
     printf("-f (horiz|vert|both)  Specify image flipping (horiz = horizontal, vert = vertical, both = both)\n");
@@ -176,12 +185,88 @@ void print_info(char *name) {
     printf("-v/-h                 Displays this help and version information\n");
 }
 
+    bool option_has_value(const int i, const int argc, std::string option, const char *next_arg) {
+    if (i >= argc - 1 || next_arg[0] == '-') {
+        LOGE("invalid: \"%s\" had no argument", option.c_str());
+        return false;
+     }
+    return true;
+}
+
+static bool get_display_settings (std::string value, unsigned short *w, unsigned short *h, unsigned short *r) {
+    // assume str  = wxh@r is valid if w and h are positive decimal integers                                                                                     
+    // with no more than 4 digits, r < 256 (stored in one byte).                                                                                                 
+    char *end;
+    std::size_t pos = value.find_first_of("x");
+    if (pos == std::string::npos) return false;
+    std::string str1 = value.substr(pos+1);
+    value.erase(pos);
+    if (value.length() == 0 || value.length() > 4 || value[0] == '-') return false;
+    *w = (unsigned short) strtoul(value.c_str(), &end, 10);
+    if (*end || *w == 0)  return false;
+    pos = str1.find_first_of("@");
+    if(pos != std::string::npos) {
+        std::string str2 = str1.substr(pos+1);
+        if (str2.length() == 0 || str2.length() > 3 || str2[0] == '-') return false;
+        *r = (unsigned short) strtoul(str2.c_str(), &end, 10);
+        if (*end || *r == 0 || *r > 255) return false;
+        str1.erase(pos);
+    }
+    if (str1.length() == 0 || str1.length() > 4 || str1[0] == '-') return false;
+    *h = (unsigned short) strtoul(str1.c_str(), &end, 10);
+    if (*end || *h == 0) return false;
+    return true;
+}
+
+static bool get_fps (const char *str, unsigned short *n) {
+    // str must be a positive decimal integer < 256 (stored in one byte)
+    char *end;
+    if (strlen(str) == 0 || strlen(str) > 3 || str[0] == '-') return false;
+    *n = (unsigned short) strtoul(str, &end, 10);
+    if (*end || *n == 0 || *n > 255) return false;
+    return true;
+}
+
+ static bool get_ports (int nports, std::string option, const char * value, unsigned short * const port) {
+    //valid entries are comma-separated values port_1,port_2,...,port_r, 0 < r <= nports                                                                         
+    //where ports are distinct, and are in the allowed range.                                                                                                    
+    //missing values are consecutive to last given value (at least one value needed).                                                                            
+    char *end;
+    unsigned long l;
+    std::size_t pos;
+    std::string val(value), str;
+    for (int i = 0; i <= nports ; i++)  {
+        if(i == nports) break;
+        pos = val.find_first_of(',');
+        str = val.substr(0,pos);
+        if(str.length() == 0 || str.length() > 5 || str[0] == '-') break;
+        l = strtoul(str.c_str(), &end, 10);
+        if (*end || l < LOWEST_ALLOWED_PORT || l > HIGHEST_PORT) break;
+         *(port + i) = (unsigned short) l;
+        for  (int j = 0; j < i ; j++) {
+            if( *(port + j) == *(port + i)) break;
+        }
+        if(pos == std::string::npos) {
+            if (nports + *(port + i) > i + 1 + HIGHEST_PORT) break;
+            for (int j = i + 1; j < nports; j++) {
+                *(port + j) = *(port + j - 1) + 1;
+            }
+            return true;
+        }
+        val.erase(0, pos+1);
+    }
+    LOGE("invalid \"%s %s\", all %d ports must be in range [%d,%d]",
+         option.c_str(), value, nports, LOWEST_ALLOWED_PORT, HIGHEST_PORT);
+    return false;
+}
+
 int main(int argc, char *argv[]) {
     init_signals();
     
     std::string server_name = DEFAULT_NAME;
     std::vector<char> server_hw_addr = DEFAULT_HW_ADDRESS;
     bool debug_log = DEFAULT_DEBUG_LOG;
+    unsigned short display[5] = {0}, tcp[3] = {0}, udp[3] = {0};
 
     video_renderer_config_t video_config;
     video_config.background_mode = DEFAULT_BACKGROUND_MODE;
@@ -203,6 +288,41 @@ int main(int argc, char *argv[]) {
         if (arg == "-n") {
             if (i == argc - 1) continue;
             server_name = std::string(argv[++i]);
+        } else if (arg == "-s") {
+            if (!option_has_value(i, argc, arg, argv[i+1])) exit(1);
+            std::string value(argv[++i]);
+            if (!get_display_settings(value, &display[0], &display[1], &display[2])) {
+                LOGE("invalid \"-s %s\"; -s wxh : max w,h=9999; -s wxh@r : max r=255",
+                      argv[i]);
+                exit(1);
+            }
+        } else if (arg == "-fps") {
+            if (!option_has_value(i, argc, arg, argv[i+1])) exit(1);
+            if (!get_fps(argv[++i], &display[3])) {
+                LOGE("invalid \"-fps %s\"; -fps n : max n=255, default n=30", argv[i]);
+                exit(1);
+            }
+        } else if (arg == "-o") {
+            display[4] = 1;
+        } else if (arg == "-p") {
+            if (i == argc - 1 || argv[i + 1][0] == '-') {
+                tcp[0] = 7100; tcp[1] = 7000; tcp[2] = 7001;
+                udp[0] = 7011; udp[1] = 6001; udp[2] = 6000;
+                continue;
+            }
+            std::string value(argv[++i]);
+            if (value == "tcp") {
+                arg.append(" tcp");
+                if(!get_ports(3, arg, argv[++i], tcp)) exit(1);
+            } else if (value == "udp") {
+                arg.append( " udp");
+                if(!get_ports(3, arg, argv[++i], udp)) exit(1);
+            } else {
+                if(!get_ports(3, arg, argv[i], tcp)) exit(1);
+                for (int j = 1; j < 3; j++) {
+                    udp[j] = tcp[j];
+                }
+            }
         } else if (arg == "-b") {
             // For backwards-compatibility, make just -b disable the background
             if (i == argc - 1 || argv[i + 1][0] == '-') {
@@ -257,6 +377,9 @@ int main(int argc, char *argv[]) {
         } else if (arg == "-h" || arg == "-v") {
             print_info(argv[0]);
             exit(0);
+        } else {
+            LOGE("unknown option %s, stopping", arg.c_str());
+            exit(1);
         }
     }
 
@@ -266,7 +389,8 @@ int main(int argc, char *argv[]) {
         parse_hw_addr(mac_address, server_hw_addr);
     }
 
-    if (start_server(server_hw_addr, server_name, debug_log, &video_config, &audio_config) != 0) {
+    if (start_server(server_hw_addr, server_name, display, tcp, udp,
+                     debug_log, &video_config, &audio_config) != 0) {
         return 1;
     }
 
@@ -338,7 +462,8 @@ extern "C" void log_callback(void *cls, int level, const char *msg) {
 
 }
 
-int start_server(std::vector<char> hw_addr, std::string name, bool debug_log,
+int start_server(std::vector<char> hw_addr, std::string name, unsigned short display[5],
+                 unsigned short tcp[3], unsigned short udp[3],  bool debug_log,
                  video_renderer_config_t const *video_config, audio_renderer_config_t const *audio_config) {
     raop_callbacks_t raop_cbs;
     memset(&raop_cbs, 0, sizeof(raop_cbs));
@@ -355,6 +480,14 @@ int start_server(std::vector<char> hw_addr, std::string name, bool debug_log,
         LOGE("Error initializing raop!");
         return -1;
     }
+
+    /* write desired display pixel width, pixel height, refresh_rate, max_fps, overscanned to raop*\
+    /* (value = 0 for default values 1920,1080,60,30); these are just info sent to the client*/
+    raop_set_display(raop, display[0], display[1], display[2], display[3], display[4]);
+
+    /* network port selection (ports listed as "0" will be dynamically assigned) */
+    raop_set_tcp_ports(raop, tcp);
+    raop_set_udp_ports(raop, udp);
 
     raop_set_log_callback(raop, log_callback, NULL);
     raop_set_log_level(raop, debug_log ? RAOP_LOG_DEBUG : LOGGER_INFO);
@@ -381,7 +514,7 @@ int start_server(std::vector<char> hw_addr, std::string name, bool debug_log,
     if (video_renderer) video_renderer->funcs->start(video_renderer);
     if (audio_renderer) audio_renderer->funcs->start(audio_renderer);
 
-    unsigned short port = 0;
+    unsigned short port = raop_get_port(raop);
     raop_start(raop, &port);
     raop_set_port(raop, port);
 
@@ -395,7 +528,12 @@ int start_server(std::vector<char> hw_addr, std::string name, bool debug_log,
     raop_set_dnssd(raop, dnssd);
 
     dnssd_register_raop(dnssd, port);
-    dnssd_register_airplay(dnssd, port + 1);
+    if (tcp[2]) {
+        port = tcp[2];
+    } else {
+        port = (port != HIGHEST_PORT ? port + 1 : port - 1);
+    }
+    dnssd_register_airplay(dnssd, port);
 
     return 0;
 }
