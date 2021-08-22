@@ -98,6 +98,25 @@ At the moment, these options are implemented:
 
 **-n name**: Specify the network name of the AirPlay server.
 
+**-s wxh**: set the display resolution of the mirror window in pixels: default
+   is 1920x1080
+
+**-s wxh@r**: as above, but also include display refresh rate in Hz;  default
+   is 1920x1080@60.  r < 256 is required.
+
+**-o**: set overscanned mode for mirror display window to "on"; default is "off".
+
+**-fps**: set maximum streaming framerate in fps; default is 30; value < 256 is required.
+
+**-p**: (for use with a firewall). Use fixed "legacy" network ports TCP 7000:7001:7100,
+   UDP 6000:6001:7011.  Thes ports should be open in the firewall.
+
+**-p n**: use ports (both  TCP and UDP)  n:n+1:n+2.  Ports must be in range
+   1024-56535.  For finer control: **-p tcp n** only sets the 3 TCP ports, **-p
+   udp n** only sets the 3 UDP ports.    Replace "n" by "n1,n2,n3"
+   (comma-separated values) to set the three ports individually; The three
+   numbers must be distinct. "n1,n2" gives n3 = n2+1.   
+
 **-b (on|auto|off)**: Show black background always, only during active connection, or never.
 
 **-r (90|180|270)**: Specify image rotation in multiples of 90 degrees.
