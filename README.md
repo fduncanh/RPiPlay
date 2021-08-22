@@ -112,7 +112,7 @@ At the moment, these options are implemented:
    UDP 6000:6001:7011.  Thes ports should be open in the firewall.
 
 **-p n**: use ports (both  TCP and UDP)  n:n+1:n+2.  Ports must be in range
-   1024-56535.  For finer control: **-p tcp n** only sets the 3 TCP ports, **-p
+   1024-65535.  For finer control: **-p tcp n** only sets the 3 TCP ports, **-p
    udp n** only sets the 3 UDP ports.    Replace "n" by "n1,n2,n3"
    (comma-separated values) to set the three ports individually; The three
    numbers must be distinct. "n1,n2" gives n3 = n2+1.   
