@@ -102,8 +102,7 @@ raop_rtp_parse_remote(raop_rtp_mirror_t *raop_rtp_mirror, const unsigned char *r
 #define NO_FLUSH (-42)
 raop_rtp_mirror_t *raop_rtp_mirror_init(logger_t *logger, raop_callbacks_t *callbacks, raop_ntp_t *ntp,
                                         const unsigned char *remote, int remotelen,
-                                        const unsigned char *aeskey, const unsigned char *ecdh_secret,
-                                        unsigned short mirror_data_lport)
+                                        const unsigned char *aeskey, const unsigned char *ecdh_secret)
 {
     raop_rtp_mirror_t *raop_rtp_mirror;
 
@@ -114,7 +113,6 @@ raop_rtp_mirror_t *raop_rtp_mirror_init(logger_t *logger, raop_callbacks_t *call
     if (!raop_rtp_mirror) {
         return NULL;
     }
-    raop_rtp_mirror->mirror_data_lport = mirror_data_lport;
     raop_rtp_mirror->logger = logger;
     raop_rtp_mirror->ntp = ntp;
 
@@ -448,6 +446,7 @@ raop_rtp_start_mirror(raop_rtp_mirror_t *raop_rtp_mirror, int use_udp, unsigned 
         return;
     }
 
+    raop_rtp_mirror->mirror_data_lport = *mirror_data_lport;
     if (raop_rtp_mirror->remote_saddr.ss_family == AF_INET6) {
         use_ipv6 = 1;
     }
