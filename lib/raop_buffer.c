@@ -175,7 +175,7 @@ raop_buffer_decrypt(raop_buffer_t *raop_buffer, unsigned char *data, unsigned ch
     memset(output, 0, payload_size);
     // Need to be initialized internally
     aes_ctx_t *aes_ctx_audio = aes_cbc_init(raop_buffer->aeskey, raop_buffer->aesiv, AES_DECRYPT);
-    aes_cbc_decrypt(aes_ctx_audio, &data[12], output, encryptedlen);
+    aes_cbc_decrypt(aes_ctx_audio, &data[12], output, encryptedlen + 15);
     aes_cbc_destroy(aes_ctx_audio);
 
     memcpy(output + encryptedlen, &data[12 + encryptedlen], payload_size - encryptedlen);
